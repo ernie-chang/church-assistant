@@ -20,7 +20,7 @@ matplotlib.rcParams["axes.unicode_minus"] = False
 
 # --- 🚨 設置 Gemini (請替換為您的 API Key) ---
 # 警告：在生產環境中，請使用環境變數而非硬編碼
-GEMINI_API_KEY = "AIzaSyC9_3LoesEqaEAuKtJpDNRbLsUPZPr_NyE" 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 try:
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel('gemini-2.5-flash')
