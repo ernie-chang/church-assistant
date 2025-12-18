@@ -18,13 +18,6 @@ BASE_URL = "https://backend.chlife-stat.org"
 LOGIN_URL = f"{BASE_URL}/api/login"
 DATA_URL = f"{BASE_URL}/api/church/member"
 
-# Gemini 配置
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# 設置 Gemini
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash') 
-
 # --- 欄位對應與輸出格式定義 (最終確認修正) ---
 ATTEND_MAP = {
     # 🚨 關鍵修正: 假設您所需的小區名稱在 API 的 lv3_name 中
@@ -47,14 +40,29 @@ EXCEL_COLUMNS_ORDER = [
 ]
 
 # --- 2. 工具函式 ---
-
-def get_last_week_info():
-    """計算並返回前一週的年份、週次和該週的開始日期 (YYYY-MM-DD 格式)。"""
-    today = datetime.now().date()
-    last_week_date = today - timedelta(weeks=1)
-    year, week, _ = last_week_date.isocalendar()
-    start_of_week = last_week_date - timedelta(days=last_week_date.isoweekday() - 1)
-    return year, week, start_of_week.strftime("%Y-%m-%d")
+def get_church_week_info(target_date=None):
+    """
+    獲取召會週訊資訊 (週日開始算)。
+    :param target_date: 若提供則計算該日期的週次，否則預設為「上週」。
+    :return: year (int), week (int), sunday_date_str (str)
+    """
+    if target_date is None:
+        target_date = datetime.now().date()
+    elif isinstance(target_date, str):
+        target_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+    
+    # 計算該週的週日是哪一天
+    # weekday(): Mon=0, ..., Sat=5, Sun=6
+    # 若今天是週日(6)，days_to_subtract = 0
+    # 若今天是週一(0)，days_to_subtract = 1
+    days_to_subtract = (target_date.weekday() + 1) % 7
+    sunday_date = target_date - timedelta(days=days_to_subtract)
+    
+    year = int(sunday_date.strftime("%Y"))
+    # %U: 以週日為一週開始 (00-53)
+    week = int(sunday_date.strftime("%U"))
+    
+    return year, week, sunday_date.strftime("%Y-%m-%d")
 
 def get_auth_token():
     """執行登入並獲取 JWT Token。"""
@@ -157,7 +165,6 @@ def analyze_church_data(df_formatted, week_start_date):
     if df_formatted.empty:
         return "⚠️ 本週尚未有數據或抓取失敗。", pd.DataFrame() 
     
-    # 🚨 關鍵: 直接使用 '區別' (小區名稱) 進行分組統計和 RAG
     grouping_col = '區別' 
     attend_cols = [v for k, v in ATTEND_MAP.items() if k.startswith('attend')]
     
@@ -188,58 +195,15 @@ def analyze_church_data(df_formatted, week_start_date):
 
     return "\n".join(report), df_formatted # 回傳 df 供 RAG 函式使用
 
-def generate_rag_report(df, week_start_date):
-    """使用 Gemini 分析數據並生成報告。"""
-    
-    # RAG 需要的欄位
-    required_cols = ['姓名', '區別', '主日', '禱告', '小排'] 
-    df_for_rag = df[[col for col in required_cols if col in df.columns]]
-
-    # 找出所有聚會（主日、禱告、小排）皆缺席的聖徒
-    absent_mask = (df_for_rag['主日'] == 0) & (df_for_rag['禱告'] == 0) & (df_for_rag['小排'] == 0)
-    absent_members = df_for_rag[absent_mask][['姓名', '區別']]
-    
-    # 格式化缺席名單
-    absent_list = absent_members.apply(lambda row: f"  - {row['區別']}：{row['姓名']}", axis=1).tolist()
-    absent_section = ""
-    if absent_list:
-        absent_section = f"以下聖徒本週所有主要聚會皆缺席 ({len(absent_list)}人)，請務必關心：\n" + "\n".join(absent_list)
-    
-    # 將 DataFrame 轉換為 Markdown 表格
-    data_markdown = df_for_rag.to_markdown(index=False)
-    
-    # RAG Prompt 
-    system_prompt = f"""
-    你是一個細心、熱情的教會數據機器人。你的任務是分析提供的教會點名數據，並生成一份溫暖、易懂的報告。
-
-    - 數據截止日期為 {week_start_date} 開始的一週。
-    - 點名數值 1 代表出席，0 代表缺席。'區別' 是小區名稱 (高中一區/高中二區)，這是主要分組名稱。
-
-    請根據提供的數據，完成以下任務：
-    1. 統計「主日」、「禱告」、「小排」的總出席人數。
-    2. 分析各項聚會的最高出席率「區別」。
-    3. {absent_section}
-    4. 根據分析結果，生成一份**摘要報告**，並在最後提出一個溫和的「關心建議」。
-    """
-    
-    user_content = f"本週點名數據如下：\n\n{data_markdown}"
-    
-    try:
-        response = model.generate_content([system_prompt, user_content])
-        return response.text
-    except Exception as e:
-        return f"Gemini 報告生成失敗: {e}"
-
 # --- 3. 主執行邏輯 ---
-def main():
-    # 獲取 Token
+def main(target_date=None):
     token = get_auth_token()
     if not token:
-        return 
+        return "登入失敗"
 
-    # 獲取日期
-    year, week, week_start_date = get_last_week_info() 
-    print(f"本週報告區間：{week_start_date}（{year} 年 第 {week} 週）")
+    year, week, week_start_date = get_church_week_info(target_date)
+    report = f"自動抓取報告：{week_start_date}（{year} 年 第 {week} 週）"
+    print(report)
 
     # 抓取數據並自動存檔 Excel
     json_data, df_formatted = fetch_weekly_data(token, year, week, week_start_date)
@@ -253,16 +217,9 @@ def main():
     # 輸出最終報告（先輸出統計表格）
     print("\n--- 💻 自動生成報告 (統計表格) ---")
     print(report_text)
-    
-    # 使用格式化後的 df 進行 RAG 報告生成
-    # if not df_for_rag.empty:
-    #     rag_report = generate_rag_report(df_for_rag, week_start_date)
-    #     print("\n--- 🤖 Gemini RAG 分析報告 ---")
-    #     print(rag_report)
-    # else:
-    #     print("無法生成 RAG 報告，因為數據為空。")
         
     print("--- 報告結束 ---")
+    return report
     
 if __name__ == "__main__":
     main()
