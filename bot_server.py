@@ -64,7 +64,11 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 數據更新完成！"))
         except Exception as e:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 更新失敗: {e}"))
-
+    elif user_query == "測試圖片":
+        base_url = os.environ.get("RENDER_EXTERNAL_URL")
+        filename = "高中大區_attendance.png"
+        img_url = f"{base_url}/static/charts/{filename}"
+        line_bot_api.reply_message(event.reply_token, ImageSendMessage(img_url, img_url))
     # 指令 2：生成報表
     elif user_query in ["生成報表", "報表"]:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📊 正在生成視覺化圖表..."))
