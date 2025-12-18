@@ -48,18 +48,25 @@ def handle_message(event):
     msg = event.message.text.strip()
     print(f"收到訊息: {msg}")
     user_id = event.source.user_id
+    trigger_keyword = "81人數助理"
+    if trigger_keyword not in msg:
+        return # 如果訊息沒提到關鍵字，直接結束，不回覆
+
+    # 關鍵修正 2：確保回應在群組（使用 reply_token）
+    # 去除關鍵字後再進行分析，這樣 Gemini 才不會被關鍵字干擾
+    user_query = msg.replace(trigger_keyword, "").strip()
 
     # 指令 1：更新數據 (執行您的 app.py 邏輯)
-    if msg == "更新數據":
+    if user_query == "更新數據":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 正在連線至教會系統抓取最新點名表..."))
         try:
             church_api.main() # 執行您上傳的 app.py 中的 main()
-            line_bot_api.push_message(user_id, TextSendMessage(text="✅ 數據更新完成！"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 數據更新完成！"))
         except Exception as e:
-            line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 更新失敗: {e}"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 更新失敗: {e}"))
 
     # 指令 2：生成報表
-    elif msg in ["生成報表", "報表"]:
+    elif user_query in ["生成報表", "報表"]:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📊 正在生成視覺化圖表..."))
         try:
             os.makedirs(CHARTS_OUTPUT_DIR, exist_ok=True)
@@ -70,6 +77,7 @@ def handle_message(event):
             base_url = os.environ.get("RENDER_EXTERNAL_URL") 
             
             for region_name in REGION_MAPPING.keys():
+                print(f"生成 {region_name} 的圖表...")
                 generate_region_charts(df_reports, region_name, CHARTS_OUTPUT_DIR)
                 filename = f"{region_name}_attendance.png"
                 img_path = os.path.join(CHARTS_OUTPUT_DIR, filename)
@@ -77,17 +85,17 @@ def handle_message(event):
                 if os.path.exists(img_path):
                     # 組合出 LINE 抓得到圖片的 URL
                     img_url = f"{base_url}/static/charts/{filename}"
-                    line_bot_api.push_message(user_id, ImageSendMessage(img_url, img_url))
-            
+                    line_bot_api.reply_message(event.reply_token, ImageSendMessage(img_url, img_url))
+
             gc.collect()
         except Exception as e:
-            line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 產圖失敗: {e}"))
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 產圖失敗: {e}"))
 
     # 指令 3：Gemini 查詢
-    elif any(word in msg for word in ["請問", "查詢", "誰", "哪"]):
+    elif any(word in user_query for word in ["請問", "查詢", "誰", "哪"]):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🔍 正在分析數據..."))
-        res = generate_rag_response(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL, msg)
-        line_bot_api.push_message(user_id, TextSendMessage(text=res))
+        res = generate_rag_response(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL, user_query)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=res))
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 10000))
