@@ -28,7 +28,7 @@ REPORTS_DIR_EXCEL = os.path.join(BASE_DIR, "reports_excel")
 CHARTS_OUTPUT_DIR = os.path.join(BASE_DIR, "charts")
 
 # --- 🚨 0 元圖片方案：開放 /tmp 存取路由 ---
-@app.route('/static/charts/<filename>')
+@app.route('/static/<filename>')
 def serve_charts(filename):
     # 這讓 LINE 可以透過 https://您的網址/static/charts/xxx.png 抓到圖
     return send_from_directory(CHARTS_OUTPUT_DIR, filename)
@@ -65,9 +65,10 @@ def handle_message(event):
         except Exception as e:
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 更新失敗: {e}"))
     elif user_query == "測試圖片":
+        print(BASE_DIR)
         base_url = os.environ.get("RENDER_EXTERNAL_URL")
         filename = "高中大區_attendance.png"
-        img_url = f"{base_url}/static/charts/{filename}"
+        img_url = f"{base_url}/charts/{filename}"
         line_bot_api.reply_message(event.reply_token, ImageSendMessage(img_url, img_url))
     # 指令 2：生成報表
     elif user_query in ["生成報表", "報表"]:
@@ -88,7 +89,7 @@ def handle_message(event):
                 
                 if os.path.exists(img_path):
                     # 組合出 LINE 抓得到圖片的 URL
-                    img_url = f"{base_url}/static/charts/{filename}"
+                    img_url = f"{base_url}/charts/{filename}"
                     line_bot_api.reply_message(event.reply_token, ImageSendMessage(img_url, img_url))
 
             gc.collect()
@@ -97,7 +98,6 @@ def handle_message(event):
 
     # 指令 3：Gemini 查詢
     elif any(word in user_query for word in ["請問", "查詢", "誰", "哪"]):
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🔍 正在分析數據..."))
         res = generate_rag_response(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL, user_query)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=res))
 
