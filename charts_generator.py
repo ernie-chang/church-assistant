@@ -10,12 +10,17 @@ import matplotlib
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.font_manager as fm
 
 import google.generativeai as genai
 
 # Font settings for Chinese (prefer macOS fonts)
 matplotlib.rcParams["font.sans-serif"] = ["Heiti TC", "PingFang TC", "STHeiti", "Noto Sans CJK TC", "Arial Unicode MS"]
 matplotlib.rcParams["axes.unicode_minus"] = False
+font_path = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
+if os.path.exists(font_path):
+    prop = fm.FontProperties(fname=font_path)
+    plt.rcParams['font.family'] = prop.get_name()
 
 
 # --- 🚨 設置 Gemini (請替換為您的 API Key) ---
