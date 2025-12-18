@@ -1,7 +1,10 @@
 FROM python:3.10-slim
 
 # 安裝系統必備組件與中文字體
-RUN apt-get update && apt-get install -y fonts-noto-cjk && fc-cache -fv
+RUN apt-get update && apt-get install -y \
+    fonts-noto-cjk \
+    fc-cache -fv \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
