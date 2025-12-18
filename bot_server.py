@@ -5,6 +5,7 @@ from flask import Flask, request, abort, send_from_directory
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
+import urllib.parse
 
 # 導入您的腳本
 from charts_generator import (
@@ -76,9 +77,10 @@ def handle_message(event):
     # 2. 測試圖片 (修正網址路徑與發送邏輯)
     elif user_query == "測試圖片":
         filename = "高中大區_attendance.png"
-        # 修正：確保路徑與 Flask 的 @app.route('/static/<filename>') 一致
-        img_url = f"{base_url}/charts/{filename}"
-        print(f"DEBUG URL: {img_url}") # 在 Render Logs 中檢查此網址
+        safe_filename = urllib.parse.quote(filename)
+        img_url = f"{base_url}/charts/{safe_filename}"
+        
+        print(f"DEBUG: 發送圖片網址 -> {img_url}")
         reply_msgs.append(ImageSendMessage(original_content_url=img_url, preview_image_url=img_url))
 
     # 3. 生成報表
