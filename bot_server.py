@@ -3,6 +3,8 @@ import sys
 import re
 import gc
 import csv
+import json
+import logging
 from flask import Flask, request, abort, send_from_directory
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -10,6 +12,8 @@ from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSend
 import urllib.parse
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # 導入您的腳本
 from charts_generator import (
@@ -17,6 +21,13 @@ from charts_generator import (
     generate_rag_response, REGION_MAPPING
 )
 import app as church_api  # 導入您的 app.py (自動抓取程式)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()] # Render Logs 會抓取此輸出
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -33,11 +44,82 @@ REPORTS_DIR_EXCEL = os.path.join(BASE_DIR, "reports_excel")
 CHARTS_OUTPUT_DIR = os.path.join(BASE_DIR, "charts")
 USER_LOG_FILE = os.path.join(BASE_DIR, "users_log.csv")
 
-GROUP_CHART_CONFIG = {
-    "C1234567890abcdef...": ["高中一區", "高中二區"],
-    "C0987654321fedcb...": ["高中大區", "全教會總計"],
-}
+SCHEDULE_DAY_OF_WEEK = os.environ.get("SCHEDULE_DAY_OF_WEEK", "mon")
+SCHEDULE_HOUR = int(os.environ.get("SCHEDULE_HOUR", 10))
+SCHEDULE_MINUTE = int(os.environ.get("SCHEDULE_MINUTE", 0))
 
+def get_sheet_conn():
+    """建立 Google Sheets 連線"""
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds_json = os.environ.get("GSPREAD_JSON")
+        if not creds_json: return None
+        
+        creds_dict = json.loads(creds_json)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        return client.open_by_key(os.environ.get("GOOGLE_SHEET_ID"))
+    except Exception as e:
+        print(f"❌ Google Sheet 連線失敗: {e}")
+        return None
+
+def get_group_config_from_sheet():
+    """從 Config 分頁動態讀取發送設定"""
+    config = {}
+    try:
+        sheet = get_sheet_conn()
+        if not sheet: return config
+        ws = sheet.worksheet("Config")
+        data = ws.get_all_values()[1:]  # 跳過標頭列
+        for row in data:
+            if len(row) >= 3:
+                gid = row[0].strip()
+                # 支援逗號分隔多個區域
+                regions = [r.strip() for r in row[2].replace("，", ",").split(",") if r.strip()]
+                if gid and regions:
+                    config[gid] = regions
+    except Exception as e:
+        print(f"❌ 讀取 Config 失敗: {e}")
+    return config
+
+def record_interaction(group_id, group_name, user_id, user_name, message):
+    """
+    處理兩種邏輯：
+    1. Users 分頁：紀錄『誰』用過（不重疊，更新最後互動時間）
+    2. Logs 分頁：紀錄『訊息流水帳』（每一則都記）
+    """
+    try:
+        sheet = get_sheet_conn()
+        if not sheet: return
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # --- A. 更新 Logs (流水帳) ---
+        log_ws = sheet.worksheet("Logs")
+        # 格式：時間 | 群組ID | 群組名稱 | 使用者ID | 使用者名稱 | 訊息內容
+        log_ws.append_row([now, group_id, group_name, user_id, user_name, message])
+
+        # --- B. 更新 Users (名冊) ---
+        user_ws = sheet.worksheet("Users")
+        all_users = user_ws.get_all_values()
+        
+        # 找看看這個 ID 是否已經在表裡 (比對第 2 欄的使用者 ID)
+        found_row_index = -1
+        for i, row in enumerate(all_users):
+            if len(row) > 1 and row[1] == user_id:
+                found_row_index = i + 1
+                break
+        
+        if found_row_index != -1:
+            # 已存在，更新名稱、最後訊息、時間
+            user_ws.update_cell(found_row_index, 3, user_name) # 更新名稱
+            user_ws.update_cell(found_row_index, 4, now)       # 更新最後時間
+            user_ws.update_cell(found_row_index, 5, message)   # 更新最後訊息
+        else:
+            # 新面孔，新增一行
+            user_ws.append_row([now, user_id, user_name, now, message])
+
+    except Exception as e:
+        logger.error(f"❌ 雲端紀錄失敗: {e}")
 
 def log_user_info(event):
     """將發送訊息的使用者 ID 與名稱存入 CSV"""
@@ -58,37 +140,36 @@ def log_user_info(event):
             writer.writerow(['Timestamp', 'User_ID', 'Display_Name']) # 建立標頭
         writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), user_id, display_name])
 
-# def auto_update_and_push():
-#     """每週一早上10點自動執行"""
-#     print("⏰ 啟動每週自動更新任務...")
-#     try:
-#         # A. 更新數據 (自動抓取上週)
-#         church_api.main() 
-        
-#         # B. 產製圖表與發送
-#         df_reports = aggregate_reports(REPORTS_DIR_SUMMARY)
-#         base_url = os.environ.get("RENDER_EXTERNAL_URL", "https://your-app.onrender.com").rstrip('/')
-        
-#         for group_id, regions in GROUP_CHART_CONFIG.items():
-#             push_msgs = [TextSendMessage(text="🔔 每週一自動數據更新完成！")]
-            
-#             for region in regions:
-#                 generate_region_charts(df_reports, region, CHARTS_OUTPUT_DIR)
-#                 safe_filename = urllib.parse.quote(f"{region}_attendance.png")
-#                 img_url = f"{base_url}/charts/{safe_filename}"
-#                 push_msgs.append(ImageSendMessage(original_content_url=img_url, preview_image_url=img_url))
-            
-#             # 發送到指定群組 (LINE 限制一條 push 最多 5 個訊息物件)
-#             line_bot_api.push_message(group_id, push_msgs[:5])
-#             print(f"✅ 已推送至群組: {group_id}")
+def auto_update_and_push():
+    try:
+        church_api.main() # 更新數據
+        group_config = get_group_config_from_sheet()
+        if not group_config:
+            print("⚠️ 無發送設定，跳過推送。")
+            return
+        df_reports = aggregate_reports(REPORTS_DIR_SUMMARY)
+        base_url = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip('/')
 
-#     except Exception as e:
-#         print(f"❌ 自動更新失敗: {e}")
+        for group_id, regions in group_config.items():
+            push_msgs = [TextSendMessage(text="🔔 每週一自動數據更新完成！")]
+            for region in regions:
+                generate_region_charts(df_reports, region, CHARTS_OUTPUT_DIR)
+                safe_filename = urllib.parse.quote(f"{region}_attendance.png")
+                img_url = f"{base_url}/charts/{safe_filename}"
+                push_msgs.append(ImageSendMessage(original_content_url=img_url, preview_image_url=img_url))
+            line_bot_api.push_message(group_id, push_msgs[:5])
+    except Exception as e:
+        print(f"自動任務失敗: {e}")
 
-# # 設定排程：每週一 (mon) 10:00 執行
-# scheduler = BackgroundScheduler(timezone="Asia/Taipei")
-# scheduler.add_job(func=auto_update_and_push, trigger="cron", day_of_week="mon", hour=10, minute=0)
-# scheduler.start()
+scheduler = BackgroundScheduler(timezone="Asia/Taipei")
+scheduler.add_job(
+    func=auto_update_and_push, 
+    trigger="cron", 
+    day_of_week=SCHEDULE_DAY_OF_WEEK, 
+    hour=SCHEDULE_HOUR, 
+    minute=SCHEDULE_MINUTE
+)
+scheduler.start()
 
 # --- 🚨 0 元圖片方案：開放 /tmp 存取路由 ---
 @app.route('/charts/<filename>')
@@ -108,9 +189,26 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
+    user_id = event.source.user_id
+    group_id = event.source.group_id if event.source.type == 'group' else "私訊"
+
+    user_name = "未知名稱"
+    group_name = "個人對話"
+
+    try:
+        profile = line_bot_api.get_profile(user_id)
+        user_name = profile.display_name
+        if event.source.type == 'group':
+            group_summary = line_bot_api.get_group_summary(group_id)
+            group_name = group_summary.group_name
+    except:
+        pass # LINE 權限限制時保持預設值
+
+    # 3. 【執行紀錄】寫入 Google Sheets
+    record_interaction(group_id, group_name, user_id, user_name, msg_text)
+
     msg = event.message.text.strip()
     trigger_keyword = "81人數助理"
-    
     if trigger_keyword not in msg:
         return 
 
@@ -135,7 +233,7 @@ def handle_message(event):
         target_date = date_match.group(0) if date_match else None
         
         try:
-            display_text = f"（日期：{target_date}）" if target_date else None
+            display_text = f"（日期：{target_date}）" if target_date else ""
             # 呼叫 app.py 的 main 並帶入日期
             church_api.main(target_date=target_date)
             reply_msgs.append(TextSendMessage(text=f"✅ 數據更新完成！{display_text}"))
