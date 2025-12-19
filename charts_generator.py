@@ -14,17 +14,23 @@ import matplotlib.font_manager as fm
 
 import google.generativeai as genai
 
-# Font settings for Chinese (prefer macOS fonts)
-matplotlib.rcParams["font.sans-serif"] = ["Heiti TC", "PingFang TC", "STHeiti", "Noto Sans CJK TC", "Arial Unicode MS"]
-matplotlib.rcParams["axes.unicode_minus"] = False
-font_path = '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc'
-if os.path.exists(font_path):
-    prop = fm.FontProperties(fname=font_path)
-    plt.rcParams['font.family'] = prop.get_name()
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(CURRENT_DIR, 'fonts', 'NotoSansTC-Regular.ttf')
+if os.path.exists(FONT_PATH):
+    # 強制加入字體到 Matplotlib 的字體管理器
+    fm.fontManager.addfont(FONT_PATH)
+    # 獲取該字體的正式名稱
+    custom_font_name = fm.FontProperties(fname=FONT_PATH).get_name()
+    # 設定為全域預設字體
+    plt.rcParams['font.family'] = custom_font_name
+    # 修正負號顯示問題
+    plt.rcParams['axes.unicode_minus'] = False
+    print(f"✅ 已成功載入字體: {custom_font_name}")
+else:
+    print(f"❌ 找不到字體檔: {FONT_PATH}")
+    # Mac 備案：如果本地沒放字體，嘗試用 Mac 內建字體預覽 (但部署到 Render 會失效)
+    plt.rcParams['font.family'] = 'Arial Unicode MS'
 
-
-# --- 🚨 設置 Gemini (請替換為您的 API Key) ---
-# 警告：在生產環境中，請使用環境變數而非硬編碼
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 try:
     genai.configure(api_key=GEMINI_API_KEY)

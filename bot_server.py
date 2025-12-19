@@ -113,7 +113,6 @@ def record_interaction(group_id, group_name, user_id, user_name, message):
             # 已存在，更新名稱、最後訊息、時間
             user_ws.update_cell(found_row_index, 3, user_name) # 更新名稱
             user_ws.update_cell(found_row_index, 4, now)       # 更新最後時間
-            user_ws.update_cell(found_row_index, 5, message)   # 更新最後訊息
         else:
             # 新面孔，新增一行
             user_ws.append_row([now, user_id, user_name, now, message])
