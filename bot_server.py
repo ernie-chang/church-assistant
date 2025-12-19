@@ -18,7 +18,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # 導入您的腳本
 from charts_generator import (
     aggregate_reports, generate_region_charts, 
-    generate_rag_response, REGION_MAPPING
+    generate_rag_response, update_global_rag_context, REGION_MAPPING
 )
 import app as church_api  # 導入您的 app.py (自動抓取程式)
 
@@ -142,6 +142,7 @@ def log_user_info(event):
 def auto_update_and_push():
     try:
         church_api.main() # 更新數據
+        update_global_rag_context(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL)
         group_config = get_group_config_from_sheet()
         if not group_config:
             print("⚠️ 無發送設定，跳過推送。")
@@ -170,7 +171,6 @@ scheduler.add_job(
 )
 scheduler.start()
 
-# --- 🚨 0 元圖片方案：開放 /tmp 存取路由 ---
 @app.route('/charts/<filename>')
 def serve_charts(filename):
     # 這讓 LINE 可以透過 https://您的網址/static/charts/xxx.png 抓到圖
@@ -236,6 +236,7 @@ def handle_message(event):
             display_text = f"（日期：{target_date}）" if target_date else ""
             # 呼叫 app.py 的 main 並帶入日期
             church_api.main(target_date=target_date)
+            update_global_rag_context(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL)
             reply_msgs.append(TextSendMessage(text=f"✅ 數據更新完成！{display_text}"))
         except Exception as e:
             reply_msgs.append(TextSendMessage(text=f"❌ 更新失敗: {e}"))
@@ -289,5 +290,6 @@ def handle_message(event):
             print(f"❌ LINE API 發送失敗: {e}")
 
 if __name__ == "__main__":
+    update_global_rag_context(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL)
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

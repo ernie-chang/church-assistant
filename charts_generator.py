@@ -154,6 +154,24 @@ def _generate_rag_context(reports_dir_summary: str, reports_dir_excel: str) -> s
         
     return context
 
+GLOBAL_RAG_CONTEXT = "數據初始化中，請稍候..."
+
+# ... (保留原有的字體設定、模型設定) ...
+
+def update_global_rag_context(reports_dir_summary: str, reports_dir_excel: str):
+    """
+    手動觸發：重新讀取 Excel 並更新全局快取文字。
+    """
+    global GLOBAL_RAG_CONTEXT
+    print("🔄 正在重新構建 RAG 知識庫快取...")
+    try:
+        # 呼叫您原有的 generate 函式取得文字
+        new_context = _generate_rag_context(reports_dir_summary, reports_dir_excel)
+        GLOBAL_RAG_CONTEXT = new_context
+        print(f"✅ 知識庫快取更新完成 (字數: {len(GLOBAL_RAG_CONTEXT)})")
+        gc.collect()
+    except Exception as e:
+        print(f"❌ 快取更新失敗: {e}")
 
 # -----------------------------------------------------------
 # 總 RAG 響應生成函式 (統一處理所有查詢)
@@ -166,7 +184,7 @@ def generate_rag_response(reports_dir_summary: str, reports_dir_excel: str, quer
         return "❌ RAG 功能未啟用，請檢查 Gemini API Key 設定。"
 
     # 1. 獲取所有檔案濃縮成的核心數據上下文
-    rag_context = _generate_rag_context(reports_dir_summary, reports_dir_excel)
+    rag_context = GLOBAL_RAG_CONTEXT
     
     # 2. 準備系統提示
     system_prompt = f"""
