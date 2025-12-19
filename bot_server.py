@@ -205,9 +205,10 @@ def handle_message(event):
         pass # LINE 權限限制時保持預設值
 
     # 3. 【執行紀錄】寫入 Google Sheets
-    record_interaction(group_id, group_name, user_id, user_name, msg_text)
+    
 
     msg = event.message.text.strip()
+    record_interaction(group_id, group_name, user_id, user_name, msg)
     trigger_keyword = "81人數助理"
     if trigger_keyword not in msg:
         return 
