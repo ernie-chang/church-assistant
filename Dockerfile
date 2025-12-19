@@ -19,4 +19,4 @@ COPY . .
 EXPOSE 10000
 
 # 使用 gunicorn 啟動 (更穩定)
-CMD ["gunicorn", "--bind", "0.0.0.0:10000", "bot_server:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:10000", "bot_server:app", "--timeout", "120", "--workers", "1", "--threads", "2"]

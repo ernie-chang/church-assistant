@@ -185,8 +185,10 @@ def generate_rag_response(reports_dir_summary: str, reports_dir_excel: str, quer
     try:
         # 4. 呼叫 Gemini
         response = model.generate_content(full_prompt)
+        gc.collect()
         return response.text
     except Exception as e:
+        gc.collect()
         return f"❌ RAG 處理失敗 (Gemini API 錯誤): {e}"
 
 def parse_week_end_date_from_filename(filename: str) -> Optional[datetime]:
