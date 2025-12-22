@@ -243,6 +243,8 @@ def handle_message(event):
 
     # 2. 測試圖片 (修正網址路徑與發送邏輯)
     elif user_query == "測試圖片":
+        df_reports = aggregate_reports(REPORTS_DIR_SUMMARY)
+        generate_region_charts(df_reports, "高中大區", CHARTS_OUTPUT_DIR)
         filename = "高中大區_attendance.png"
         safe_filename = urllib.parse.quote(filename)
         img_url = f"{base_url}/charts/{safe_filename}"
@@ -253,7 +255,6 @@ def handle_message(event):
     # 3. 生成報表
     elif user_query in ["生成報表", "報表"]:
         try:
-            os.makedirs(CHARTS_OUTPUT_DIR, exist_ok=True)
             df_reports = aggregate_reports(REPORTS_DIR_SUMMARY)
             
             # 先加入提示文字
@@ -290,6 +291,5 @@ def handle_message(event):
             print(f"❌ LINE API 發送失敗: {e}")
 
 if __name__ == "__main__":
-    update_global_rag_context(REPORTS_DIR_SUMMARY, REPORTS_DIR_EXCEL)
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)

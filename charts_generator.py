@@ -33,8 +33,14 @@ else:
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 try:
+    generation_config = {
+    "temperature": 0,  # 設為 0 確保回答一致性
+    "top_p": 0.95,
+    "top_k": 40,
+    "max_output_tokens": 2048,
+}
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
 except Exception as e:
     # 如果 API key 未設定或連線失敗，則 model 為 None
     print(f"Gemini 配置失敗，RAG 功能將無法使用: {e}")
