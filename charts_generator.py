@@ -35,9 +35,6 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 try:
     generation_config = {
     "temperature": 0,  # 設為 0 確保回答一致性
-    "top_p": 0.95,
-    "top_k": 40,
-    "max_output_tokens": 2048,
 }
     genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)

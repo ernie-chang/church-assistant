@@ -243,7 +243,12 @@ def handle_message(event):
 
     # 2. 測試圖片 (修正網址路徑與發送邏輯)
     elif user_query == "測試圖片":
+        md_report = church_api.main()
+        logger.info(md_report)
+        logger.info([f for f in os.listdir(REPORTS_DIR_SUMMARY) if os.isfile(os.path.join(REPORTS_DIR_SUMMARY, f))])
         df_reports = aggregate_reports(REPORTS_DIR_SUMMARY)
+        logger.info(df_reports.head())
+        logger.info([f for f in os.listdir(REPORTS_DIR_SUMMARY) if os.isfile(os.path.join(REPORTS_DIR_SUMMARY, f))])
         generate_region_charts(df_reports, "高中大區", CHARTS_OUTPUT_DIR)
         filename = "高中大區_attendance.png"
         safe_filename = urllib.parse.quote(filename)
